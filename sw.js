@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v3";
+const CACHE_NAME = "odachi50-v4";
 const SHELL = [
   "./",
   "./index.html",
@@ -27,12 +27,37 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
-  // Network-first for video clips (assets/clips/*.mp4)
-  if (request.url.includes("/assets/clips/")) {
+  // Always try network first for navigations/HTML so index.html is never stale
+  const isHTML =
+    request.mode === "navigate" ||
+    (request.headers.get("accept") || "").includes("text/html");
+
+  if (isHTML) {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          // Do NOT cache range/partial responses (status 206) or non-OK
+          // Optionally cache the fresh HTML (not required, but fine)
+          const okFull = res.ok && res.status === 200 && res.type === "basic";
+          if (okFull) {
+            const resClone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+          }
+          return res;
+        })
+        .catch(() => {
+          // Fallback to cache (./ or cached index.html) when offline
+          return caches.match(request).then((hit) => hit || caches.match("./"));
+        })
+    );
+    return;
+  }
+
+  // Cache-first for video clips (assets/clips/*.mp4)
+  if (request.url.includes("/assets/clips/")) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((res) => {
           const isPartial = res.status === 206 || res.headers.has('Content-Range');
           const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
           if (canCache) {
@@ -40,8 +65,8 @@ self.addEventListener("fetch", (event) => {
             caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
           }
           return res;
-        })
-        .catch(() => caches.match(request))
+        });
+      })
     );
     return;
   }

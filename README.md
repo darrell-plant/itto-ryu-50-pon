@@ -5,7 +5,7 @@
 A fast, offline-capable reference app for the **36 kata (50 techniques)** of 小野派一刀流.
 Tap a tile to open a short 3×-speed clip for quick study during practice.
 
-**Demo (GitHub Pages):** _<your Pages URL here>_
+**Demo (GitHub Pages):** _<https://darrell-plant.github.io/itto-ryu-50-pon/>_
 
 ---
 
