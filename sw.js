@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v1";
+const CACHE_NAME = "odachi50-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -32,8 +32,13 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const resClone = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+          // Do NOT cache range/partial responses (status 206) or non-OK
+          const isPartial = res.status === 206 || res.headers.has('Content-Range');
+          const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
+          if (canCache) {
+            const resClone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+          }
           return res;
         })
         .catch(() => caches.match(request))
@@ -46,8 +51,12 @@ self.addEventListener("fetch", (event) => {
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((res) => {
-        const resClone = res.clone();
-        caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+        const isPartial = res.status === 206 || res.headers.has('Content-Range');
+        const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
+        if (canCache) {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+        }
         return res;
       });
     })
