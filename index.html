@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>大太刀50本 — 目録</title>
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <style>
+    :root {
+      /* Dark theme with higher contrast */
+      --bg: #0a0d12;              /* page background */
+      --surface: #0f141b;         /* header/footer/panels */
+      --tile: #0f172a;            /* tile base (slate-900) */
+      --tile-hover: #1e293b;      /* tile hover (slate-800) */
+      --text: #edf2f7;            /* near-white */
+      --muted: #c7d2fe;           /* light indigo text */
+      --border: rgba(255,255,255,0.22);
+      --border-soft: rgba(255,255,255,0.12);
+      --ring: #60a5fa;            /* blue-400 */
+      --accent: #3b82f6;          /* blue-500 */
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    header {
+      position: sticky;
+      top: 0; z-index: 20;
+      background: linear-gradient(0deg, rgba(15,20,27,0.85), rgba(15,20,27,0.98));
+      backdrop-filter: blur(6px);
+      padding: 12px 14px calc(env(safe-area-inset-top) + 10px);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+    .sub { font-size: 12px; color: var(--muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 14px;
+      max-width: 520px; /* portrait-friendly */
+      margin: 0 auto 80px;
+    }
+    .tile {
+      width: 100%;
+      aspect-ratio: 1 / 1;        /* squares that scale */
+      max-width: 100px;           /* target 100x100 */
+      max-height: 100px;
+      background: var(--tile);
+      border-radius: 16px;
+      border: 2px solid var(--border);
+      display: grid; place-items: center;
+      font-size: 22px; font-weight: 800; letter-spacing: 0.03em;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+      cursor: pointer; user-select: none;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+      margin: 0 auto; /* center within column */
+      color: var(--text);
+    }
+    .tile:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring), inset 0 0 0 2px rgba(0,0,0,0.4); }
+    .tile:hover { background: var(--tile-hover); transform: translateY(-1px); border-color: rgba(255,255,255,0.3); }
+    .tile:active { transform: translateY(0); }
+
+    /* Clip view overlay */
+    .overlay {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0,0,0,0.7);
+      display: none; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .overlay[aria-hidden="false"] { display: flex; }
+    .panel {
+      width: min(720px, 96vw);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-soft);
+      background: linear-gradient(0deg, rgba(15,23,42,0.75), rgba(15,23,42,0.96));
+    }
+    .panel-title { font-size: 16px; font-weight: 800; letter-spacing: 0.02em; }
+    .panel-sub { font-size: 12px; color: var(--muted); }
+    .panel-body { padding: 12px; background: #0b1220; }
+    video { width: 100%; height: auto; border-radius: 12px; background: #000; outline: 2px solid var(--border-soft); }
+
+    .btn {
+      border: 2px solid var(--accent);
+      background: #0b1220;
+      color: #e6f0ff;
+      padding: 8px 12px; border-radius: 12px;
+      font-size: 14px; font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    }
+    .btn:hover { background: #0f172a; }
+    .btn:active { transform: translateY(1px); }
+
+    footer {
+      position: sticky; bottom: 0; z-index: 10;
+      padding: 12px; text-align: center; font-size: 11px; color: var(--muted);
+      background: linear-gradient(180deg, rgba(10,13,18,0.0), rgba(10,13,18,0.85));
+      border-top: 1px solid var(--border-soft);
+    }
+
+    /* Respect users who prefer extra contrast */
+    @media (prefers-contrast: more) {
+      .tile { border-color: rgba(255,255,255,0.35); }
+      .btn { border-width: 3px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>大太刀50本 <span class="sub">— 目録（36形 / 50本）</span></h1>
+    </div>
+    <button class="btn" id="installBtn" hidden>インストール</button>
+  </header>
+
+  <main>
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <footer>assets/clips/*.mp4（320px / ×3速 / 約5秒）を自動再生します。</footer>
+
+  <!-- Clip overlay -->
+  <div class="overlay" id="overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="panel" role="document">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title" id="clipTitle">—</div>
+          <div class="panel-sub" id="clipHint">タップで再生 / スワイプで閉じる</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn" id="openFileBtn" title="ファイルを開く">ファイル</button>
+          <button class="btn" id="closeBtn" title="戻る">閉じる</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <video id="player" playsinline muted autoplay controls preload="metadata"></video>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Data: 36 entries (some represent 2〜3 techniques) ---
+    const entries = [
+      "01","02","03",
+      "04","05","06.07",
+      "08.09","10","11.12",
+      "13","14.15","16.17",
+      "18.19","20","21",
+      "22","23.24","25",
+      "26","27.28","29.30",
+      "31","32","33",
+      "34.35","36.37.38","39",
+      "40","41","42",
+      "43.44","45","46",
+      "47","48","49.50",
+    ];
+
+    // Metadata for names (kanji) and readings (hiragana)
+    const kataMeta = {
+      "01": { name: "一ツ勝", reading: "ひとつがち" },
+      "02": { name: "迎突", reading: "げいとつ" },
+      "03": { name: "鍔割", reading: "つばわり" },
+      "04": { name: "下段の霞", reading: "げだんのかすみ" },
+      "05": { name: "脇構の附", reading: "わきがまえのつき" },
+      "06.07": { name: "二ツ勝", reading: "ふたつがち" },
+      "08.09": { name: "陰刀", reading: "いんとう" },
+      "10": { name: "下段の打落", reading: "げだんのうちおとし" },
+      "11.12": { name: "乗身", reading: "のりみ" },
+      "13": { name: "一つ勝", reading: "ひとつがち" },
+      "14.15": { name: "下段の附・中正眼", reading: "げだんのつき・ちゅうせいがん" },
+      "16.17": { name: "折身", reading: "おりみ" },
+      "18.19": { name: "摺上", reading: "すりあげ" },
+      "20": { name: "脇構の打落", reading: "わきがまえのうちおとし" },
+      "21": { name: "本庄", reading: "ほんじょう" },
+      "22": { name: "上段の霞", reading: "じょうだんのかすみ" },
+      "23.24": { name: "拳の払", reading: "こぶしのはらい" },
+      "25": { name: "浮木", reading: "うきぎ" },
+      "26": { name: "切返", reading: "きりかえし" },
+      "27.28": { name: "左右の払", reading: "さゆうのはらい" },
+      "29.30": { name: "逆の払", reading: "ぎゃくのはらい" },
+      "31": { name: "知生", reading: "ちせい" },
+      "32": { name: "知生の合下段", reading: "ちせいのあいげだん" },
+      "33": { name: "陰の払", reading: "いんのはらい" },
+      "34.35": { name: "巻霞", reading: "まきがすみ" },
+      "36.37.38": { name: "巻返", reading: "まきかえし" },
+      "39": { name: "引身の本覚", reading: "ひきみのほんがく" },
+      "40": { name: "引身の相下段", reading: "ひきみのあいげだん" },
+      "41": { name: "発", reading: "はつ" },
+      "42": { name: "裏切", reading: "うらぎり" },
+      "43.44": { name: "長短", reading: "ちょうたん" },
+      "45": { name: "早切替", reading: "はやきりかえ" },
+      "46": { name: "順皮", reading: "じゅんかわ" },
+      "47": { name: "抜順皮", reading: "ぬきじゅんかわ" },
+      "48": { name: "詰", reading: "つめ" },
+      "49.50": { name: "余", reading: "よ" },
+    };
+
+    const grid = document.getElementById('grid');
+    const overlay = document.getElementById('overlay');
+    const player = document.getElementById('player');
+    const clipTitle = document.getElementById('clipTitle');
+    const clipHint = document.getElementById('clipHint');
+    const closeBtn = document.getElementById('closeBtn');
+    const openFileBtn = document.getElementById('openFileBtn');
+
+    // Build 3×12 grid of ~100×100 squares
+    entries.forEach((label, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'tile';
+      btn.textContent = label;
+      btn.setAttribute('aria-label', `形 ${label} を開く`);
+      btn.addEventListener('click', () => openClip(label));
+      grid.appendChild(btn);
+    });
+
+    function openClip(label) {
+      const src = `assets/clips/${label}.mp4`;
+
+      // Format number: replace dots with ", "
+      const numberFormatted = label.replace(/\./g, ",");
+
+      // Lookup metadata
+      const meta = kataMeta[label] || { name: "", reading: "" };
+
+      // Header line: "形06, 07　二ツ勝" (kanji name appended if present)
+      clipTitle.textContent = `形 ${numberFormatted}${meta.name ? "\u3000" + meta.name : ""}`;
+
+      // Hint line becomes the reading (hiragana)
+      clipHint.textContent = meta.reading || "";
+
+      // Load and play video
+      player.src = src;
+      const p = player.play();
+      if (p && typeof p.catch === 'function') p.catch(()=>{});
+
+      overlay.setAttribute('aria-hidden', 'false');
+      history.pushState({ clip: label }, '', `#${encodeURIComponent(label)}`);
+    }
+
+    function closeClip() {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      overlay.setAttribute('aria-hidden', 'true');
+      if (location.hash) {
+        history.pushState({}, '', location.pathname);
+      }
+    }
+
+    closeBtn.addEventListener('click', closeClip);
+
+    // Click outside to close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeClip();
+    });
+
+    // Basic swipe-down to close on touch devices
+    (function enableSwipeClose() {
+      let startY = null;
+      overlay.addEventListener('touchstart', (e)=>{ startY = e.touches[0].clientY; }, { passive: true });
+      overlay.addEventListener('touchmove', (e)=>{
+        if (startY === null) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy > 80) { startY = null; closeClip(); }
+      }, { passive: true });
+      overlay.addEventListener('touchend', ()=>{ startY = null; });
+    })();
+
+    // Restore from hash (deep link)
+    window.addEventListener('load', () => {
+      const hash = decodeURIComponent(location.hash.replace('#',''));
+      if (hash && entries.includes(hash)) {
+        // Defer open so layout is ready
+        setTimeout(()=>openClip(hash), 50);
+      }
+    });
+
+    // Back button handling
+    window.addEventListener('popstate', () => {
+      if (!location.hash) {
+        // If overlay is visible, close it
+        if (overlay.getAttribute('aria-hidden') === 'false') closeClip();
+      } else {
+        const label = decodeURIComponent(location.hash.slice(1));
+        if (entries.includes(label)) openClip(label);
+      }
+    });
+
+    // --- Minimal (future) PWA hooks ---
+    // NOTE: We'll add a proper manifest.json and sw.js next iteration.
+    // For now, we prepare install prompt capture so we can wire a visible button later.
+    const installBtn = document.getElementById('installBtn');
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice.catch(()=>{});
+      installBtn.hidden = true;
+      deferredPrompt = null;
+    });
+
+    // Register service worker for PWA install + offline
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(console.error);
+      });
+    }
+  </script>
+</body>
+</html>
