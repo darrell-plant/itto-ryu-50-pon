@@ -306,18 +306,39 @@
       }));
     }
 
+    // Ensure permission (Android may require a user activation to call requestPermission)
+    async function ensurePermissionForHandle(h) {
+      try {
+        let p = await h.queryPermission({ mode: 'read' });
+        if (p === 'granted') return true;
+        if (p === 'prompt') {
+          return new Promise((resolve) => {
+            const onActivate = async () => {
+              try {
+                const res = await h.requestPermission({ mode: 'read' });
+                resolve(res === 'granted');
+              } catch (_) { resolve(false); }
+            };
+            // One-time listeners to capture the next user gesture
+            document.addEventListener('pointerdown', onActivate, { once: true });
+            document.addEventListener('keydown', onActivate, { once: true });
+          });
+        }
+      } catch (_) {}
+      return false;
+    }
+
     const HANDLE_KEY = 'origDir';
 
     async function restoreDirHandle() {
       try {
         const h = await idbGet(HANDLE_KEY);
         if (!h) return null;
-        // Check permission
-        const perm = await h.queryPermission({ mode: 'read' });
-        if (perm === 'granted') { origDirHandle = h; openFileBtn.hidden = false; return h; }
-        if (perm === 'prompt') {
-          const res = await h.requestPermission({ mode: 'read' });
-          if (res === 'granted') { origDirHandle = h; openFileBtn.hidden = false; return h; }
+        const ok = await ensurePermissionForHandle(h);
+        if (ok) {
+          origDirHandle = h;
+          openFileBtn.hidden = false;
+          return h;
         }
       } catch (_) {}
       return null;
@@ -583,6 +604,11 @@
       });
     })();
 
+    // Hint the browser to persist storage (helps keep folder handles alive)
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
+
     // Restore from hash (deep link)
     window.addEventListener('load', () => {
       const hash = decodeURIComponent(location.hash.replace('#',''));
@@ -649,7 +675,6 @@
           .catch(console.error);
       });
     }
-
 
   </script>
 </body>
