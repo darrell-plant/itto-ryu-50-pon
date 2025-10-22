@@ -121,6 +121,15 @@
     .panel-body { padding: 12px; background: #0b1220; }
     video { width: 100%; height: auto; border-radius: 12px; background: #000; outline: 2px solid var(--border-soft); }
 
+    /* Keep controls visible in landscape: limit video height and stack content */
+    @media (orientation: landscape) {
+      .panel { width: min(900px, 96vw); }
+      .panel-body { display: flex; flex-direction: column; gap: 10px; }
+      video { max-height: 60vh; height: auto; object-fit: contain; }
+      /* Ensure nav row remains reachable */
+      .navRow { margin-top: 6px; }
+    }
+
     /* Prev/Next row */
     .navRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
     .navBtn { border: 2px solid var(--border); background: #0b1220; color: var(--text); padding: 8px 12px; border-radius: 10px; font-weight: 700; cursor: pointer; }

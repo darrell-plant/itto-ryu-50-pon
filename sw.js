@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v2";
+const CACHE_NAME = "odachi50-v3";
 const SHELL = [
   "./",
   "./index.html",
