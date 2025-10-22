@@ -17,6 +17,7 @@ Tap a tile to open a short 3×-speed clip for quick study during practice.
 - **Hash deep links** (e.g. `#06.07`)
 - **Keyboard controls:** ← → for Prev/Next, Esc to close clip overlay
 - **Swipe gestures:** swipe left/right to navigate, swipe down to close
+- **Original video toggle:** link a local folder of original full-speed kata videos (same filenames). The **ファイル** button toggles between 原動画 (original) and 快速 (3× speed clip).
 
 ---
 
@@ -81,8 +82,9 @@ MIT (or your choice)
 
 ---
 
-## Recent Changes (v0.1.1 → v0.1.3)
+## Recent Changes (v0.1.1 → v0.1.4)
 - Fixed landscape layout so navigation buttons remain visible
 - Added keyboard navigation (← → Esc)
 - Added swipe gestures (left/right/down)
 - Updated service worker to cache-first for clips and network-first for HTML
+- Added ability to link a local folder of original kata videos and toggle between original (原動画) and high-speed (快速) clips

@@ -131,6 +131,7 @@
     }
 
     /* Prev/Next row */
+    .navGroup { display: flex; align-items: center; gap: 8px; }
     .navRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
     .navBtn { border: 2px solid var(--border); background: #0b1220; color: var(--text); padding: 8px 12px; border-radius: 10px; font-weight: 700; cursor: pointer; }
     .navBtn[disabled] { opacity: 0.4; cursor: not-allowed; }
@@ -166,6 +167,7 @@
     <div>
       <h1>大太刀50本 <span class="sub">— 目録（36形 / 50本）</span></h1>
     </div>
+    <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
   </header>
 
   <main>
@@ -183,15 +185,15 @@
           <div class="panel-title" id="clipTitle">—</div>
           <div class="panel-sub" id="clipHint">—</div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn" id="openFileBtn" title="ファイルを開く">ファイル</button>
-          <button class="btn" id="closeBtn" title="戻る">閉じる</button>
-        </div>
       </div>
       <div class="panel-body">
         <video id="player" playsinline muted autoplay controls preload="metadata"></video>
         <div class="navRow">
           <button class="navBtn" id="prevBtn" aria-label="前へ">◀︎ 前へ</button>
+          <div class="navGroup">
+            <button class="navBtn" id="openFileBtn" title="ファイルを開く">ファイル</button>
+            <button class="navBtn" id="closeBtn" title="戻る">閉じる</button>
+          </div>
           <button class="navBtn" id="nextBtn" aria-label="次へ">次へ ▶︎</button>
         </div>
       </div>
@@ -264,6 +266,132 @@
     const openFileBtn = document.getElementById('openFileBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
+    // File toggle button starts hidden until a folder is linked
+    openFileBtn.hidden = true;
+    let playingOriginal = false; // false = short clip (快速), true = original
+
+    // --- Original folder linking via File System Access API (Chromium) ---
+    const linkFolderBtn = document.getElementById('linkFolderBtn');
+    let origDirHandle = null; // FileSystemDirectoryHandle (if granted)
+
+    // Minimal IndexedDB helpers to persist the handle across sessions
+    const DB_NAME = 'odachi50-fs';
+    const STORE = 'handles';
+
+    function idbOpen() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function idbGet(key) {
+      return idbOpen().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      }));
+    }
+    function idbSet(key, val) {
+      return idbOpen().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(val, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      }));
+    }
+
+    const HANDLE_KEY = 'origDir';
+
+    async function restoreDirHandle() {
+      try {
+        const h = await idbGet(HANDLE_KEY);
+        if (!h) return null;
+        // Check permission
+        const perm = await h.queryPermission({ mode: 'read' });
+        if (perm === 'granted') { origDirHandle = h; openFileBtn.hidden = false; return h; }
+        if (perm === 'prompt') {
+          const res = await h.requestPermission({ mode: 'read' });
+          if (res === 'granted') { origDirHandle = h; openFileBtn.hidden = false; return h; }
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    async function pickDirHandle() {
+      if (!('showDirectoryPicker' in window)) {
+        alert('このブラウザはフォルダ選択に対応していません。Chrome/Edge をご利用ください。');
+        return null;
+      }
+      try {
+        const h = await window.showDirectoryPicker({ mode: 'read' });
+        const perm = await h.requestPermission({ mode: 'read' });
+        if (perm !== 'granted') return null;
+        await idbSet(HANDLE_KEY, h);
+        origDirHandle = h;
+        openFileBtn.hidden = false;
+        return h;
+      } catch (e) { return null; }
+    }
+
+    async function playOriginalFromFolder(label) {
+      if (!origDirHandle) return false;
+      try {
+        const fh = await origDirHandle.getFileHandle(`${label}.mp4`);
+        const file = await fh.getFile();
+        const url = URL.createObjectURL(file);
+        player.src = url;
+        await player.play().catch(()=>{});
+        return true;
+      } catch (_) { return false; }
+    }
+
+    // Link folder button: choose or re-authorize folder
+    linkFolderBtn.addEventListener('click', async () => {
+      const h = await pickDirHandle();
+      if (h) {
+        if (overlay.getAttribute('aria-hidden') === 'false') {
+          openFileBtn.hidden = false;
+          openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
+        }
+        // Optional: Tiny toast confirming link
+        clipHint.textContent = '原動画フォルダをリンクしました';
+        setTimeout(() => { if (clipHint.textContent === '原動画フォルダをリンクしました') clipHint.textContent = ''; }, 1500);
+      }
+    });
+
+    // Try to restore handle on load (Chromium only)
+    restoreDirHandle();
+
+    // Toggle between original and short clip
+    async function toggleOriginal() {
+      if (!origDirHandle) return;
+      const label = entries[currentIndex];
+      if (!label) return;
+
+      if (!playingOriginal) {
+        // Switch to original
+        const ok = await playOriginalFromFolder(label);
+        if (ok) {
+          playingOriginal = true;
+          openFileBtn.textContent = '快速'; // now button switches back to high-speed clip
+        } else {
+          // Original missing; keep clip and show a tiny hint
+          clipHint.textContent = '原動画が見つかりません';
+          setTimeout(() => {
+            if (clipHint.textContent === '原動画が見つかりません') clipHint.textContent = '';
+          }, 1500);
+        }
+      } else {
+        // Switch back to high-speed clip
+        playClipForLabel(label);
+        playingOriginal = false;
+        openFileBtn.textContent = '原動画';
+      }
+    }
+    openFileBtn.addEventListener('click', toggleOriginal);
 
     let currentIndex = -1; // track which entry is open
 
@@ -291,6 +419,13 @@
       grid.appendChild(btn);
     });
 
+    function playClipForLabel(label) {
+      const src = `assets/clips/${label}.mp4`;
+      player.src = src;
+      const p = player.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+
     function openClip(label) {
       const src = `assets/clips/${label}.mp4`;
       // Track index
@@ -304,9 +439,11 @@
       // Hint line becomes the reading (hiragana)
       clipHint.textContent = meta.reading || '';
       // Load and play video
-      player.src = src;
-      const p = player.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      playClipForLabel(label);
+      // Reset to short clip on open; update toggle button
+      playingOriginal = false;
+      openFileBtn.textContent = '原動画'; // invite switching to original
+      openFileBtn.hidden = !origDirHandle; // only show if folder is linked
 
       overlay.setAttribute('aria-hidden', 'false');
       history.pushState({ clip: label }, '', `#${encodeURIComponent(label)}`); // lightweight routing
