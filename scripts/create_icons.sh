@@ -15,3 +15,10 @@ magick -size 192x192 xc:black \
   -pointsize 50 -annotate +0-24 "大太刀" \
   -pointsize 40  -annotate +0+30 "50本" \
   icon-192.png
+
+# favicons: make smaller PNGs
+magick icons/icon-512.png -resize 32x32 icons/icon-32.png
+magick icons/icon-512.png -resize 16x16 icons/icon-16.png
+
+# optional but good for legacy browsers: multi-size .ico
+magick icons/icon-512.png -define icon:auto-resize=256,128,64,48,32,16 favicon.ico

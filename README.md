@@ -1,5 +1,3 @@
-
-
 # 大太刀50本 — Ono-ha Ittō-ryū Kata Quick Reference (PWA)
 
 A fast, offline-capable reference app for the **36 kata (50 techniques)** of 小野派一刀流.
@@ -17,6 +15,8 @@ Tap a tile to open a short 3×-speed clip for quick study during practice.
   - **Offline shell**, clips cached after first play (if fully fetched)
   - **Update toast** when a new version is available
 - **Hash deep links** (e.g. `#06.07`)
+- **Keyboard controls:** ← → for Prev/Next, Esc to close clip overlay
+- **Swipe gestures:** swipe left/right to navigate, swipe down to close
 
 ---
 
@@ -58,7 +58,7 @@ http://<your-desktop-LAN-IP>:8080/
 - **Caching:** Videos fetched via HTTP Range (206) are **not cached**; full 200 responses **are** cached.
 - On release, bump the cache name in `sw.js`:
 ```js
-const CACHE_NAME = "odachi50-v2";
+const CACHE_NAME = "odachi50-v4";
 ```
 
 ---
@@ -78,3 +78,11 @@ gh api \
 
 ## License
 MIT (or your choice)
+
+---
+
+## Recent Changes (v0.1.1 → v0.1.3)
+- Fixed landscape layout so navigation buttons remain visible
+- Added keyboard navigation (← → Esc)
+- Added swipe gestures (left/right/down)
+- Updated service worker to cache-first for clips and network-first for HTML
