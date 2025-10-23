@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v10";
+const CACHE_NAME = "odachi50-v11";
 // Expose a simple version endpoint for the app shell to read
 const VERSION_ENDPOINT = 'version.txt';
 const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
@@ -30,7 +30,6 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-
   // Serve a plain-text version string from the SW (uses CACHE_NAME)
   try {
     const url = new URL(event.request.url);
@@ -71,61 +70,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for video clips (assets/clips/*.mp4)
+  // Cache-first for video clips
   if (request.url.includes("/assets/clips/")) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((res) => {
-          const isPartial = res.status === 206 || res.headers.has('Content-Range');
-          const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
-          if (canCache) {
-            const resClone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
-          }
-          return res;
-        });
-      })
-    );
-    return;
+    return cacheFirst(event, request);
   }
 
-  // Cache-first for app icons (icons/*)
+  // Cache-first for full originals
+  if (request.url.includes('/assets/originals/')) {
+    return cacheFirst(event, request);
+  }
+
+  // Cache-first for app icons
   if (request.url.includes('/icons/')) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((res) => {
-          const isPartial = res.status === 206 || res.headers.has('Content-Range');
-          const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
-          if (canCache) {
-            const resClone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
-          }
-          return res;
-        });
-      })
-    );
-    return;
+    return cacheFirst(event, request);
   }
 
   // Cache-first for the PWA manifest
   if (request.url.endsWith('manifest.webmanifest')) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((res) => {
-          const isPartial = res.status === 206 || res.headers.has('Content-Range');
-          const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
-          if (canCache) {
-            const resClone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
-          }
-          return res;
-        });
-      })
-    );
-    return;
+    return cacheFirst(event, request);
   }
 
   // Network-first for everything else
@@ -143,3 +105,21 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(request))
   );
 });
+
+function cacheFirst(event, request) {
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((res) => {
+        const isPartial = res.status === 206 || res.headers.has('Content-Range');
+        const canCache = res.ok && !isPartial && request.method === 'GET' && res.type === 'basic';
+        if (canCache) {
+          const resClone = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, resClone));
+        }
+        return res;
+      });
+    })
+  );
+  return;
+}

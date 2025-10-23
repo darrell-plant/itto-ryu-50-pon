@@ -197,8 +197,6 @@
   <main>
     <div class="grid" id="grid"></div>
       <div class="gridActions">
-        <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
-        <button class="btn" id="reconnectFolderBtn" title="原動画フォルダを再リンク">フォルダ再リンク</button>
         <button class="btn" id="qrBtn" title="QRコードを表示">QR</button>
       </div>
   </main>
@@ -317,163 +315,23 @@
     // Accessibility: prevent focus in hidden overlay
     overlay.setAttribute('inert', '');
     let lastFocused = null;
-    // File toggle button starts hidden until a folder is linked
-    openFileBtn.hidden = true;
     let playingOriginal = false; // false = short clip (快速), true = original
 
-    // --- Original folder linking via File System Access API (Chromium) ---
-    const linkFolderBtn = document.getElementById('linkFolderBtn');
-    const reconnectFolderBtn = document.getElementById('reconnectFolderBtn');
-
-    let origDirHandle = null; // FileSystemDirectoryHandle (if granted)
-    let storedDirHandle = null; // persisted handle from IDB (may not be authorized yet)
-
-    // Minimal IndexedDB helpers to persist the handle across sessions
-    const DB_NAME = 'odachi50-fs';
-    const STORE = 'handles';
-
-    function idbOpen() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-    function idbGet(key) {
-      return idbOpen().then(db => new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readonly');
-        const req = tx.objectStore(STORE).get(key);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error);
-      }));
-    }
-    function idbSet(key, val) {
-      return idbOpen().then(db => new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put(val, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      }));
-    }
-
-    // Preload stored handle from IDB (no permission prompt)
-    async function preloadStoredHandle() {
-      try { storedDirHandle = await idbGet(HANDLE_KEY); } catch (_) { storedDirHandle = null; }
-    }
-    // Kick off preload early so we can use the current click's user activation
-    preloadStoredHandle();
-
-    // Ensure permission (Android may require a user activation to call requestPermission)
-    async function ensurePermissionForHandle(h) {
+    // --- Hosted originals loader ---
+    async function playOriginalHosted(label) {
+      const url = `assets/originals/${label}.mp4`;
       try {
-        let p = await h.queryPermission({ mode: 'read' });
-        if (p === 'granted') return true;
-        if (p === 'prompt') {
-          // If we're currently in a user activation (e.g., button click), request immediately
-          if (navigator.userActivation && navigator.userActivation.isActive) {
-            try { const res = await h.requestPermission({ mode: 'read' }); return res === 'granted'; }
-            catch (_) { return false; }
-          }
-          // Otherwise wait for the next user gesture
-          return new Promise((resolve) => {
-            const onActivate = async () => {
-              try { const res = await h.requestPermission({ mode: 'read' }); resolve(res === 'granted'); }
-              catch (_) { resolve(false); }
-            };
-            document.addEventListener('pointerdown', onActivate, { once: true });
-            document.addEventListener('keydown', onActivate, { once: true });
-          });
-        }
-      } catch (_) {}
-      return false;
-    }
-
-    const HANDLE_KEY = 'origDir';
-    async function restoreDirHandle() {
-      try {
-        const h = storedDirHandle || await idbGet(HANDLE_KEY);
-        if (!h) return null;
-        const ok = await ensurePermissionForHandle(h);
-        if (ok) {
-          origDirHandle = h;
-          openFileBtn.hidden = false;
-          return h;
-        }
-      } catch (_) {}
-      return null;
-    }
-
-    async function pickDirHandle() {
-      if (!('showDirectoryPicker' in window)) {
-        alert('このブラウザはフォルダ選択に対応していません。Chrome/Edge をご利用ください。');
-        return null;
-      }
-      try {
-        const h = await window.showDirectoryPicker({ mode: 'read' });
-        const perm = await h.requestPermission({ mode: 'read' });
-        if (perm !== 'granted') return null;
-        await idbSet(HANDLE_KEY, h);
-        origDirHandle = h;
-        openFileBtn.hidden = false;
-        return h;
-      } catch (e) { return null; }
-    }
-
-    async function playOriginalFromFolder(label) {
-      if (!origDirHandle) return false;
-      try {
-        const fh = await origDirHandle.getFileHandle(`${label}.mp4`);
-        const file = await fh.getFile();
-        const url = URL.createObjectURL(file);
-        player.src = url;
-        player.loop = false; // original plays once
-        applySettings();
-        await player.play().catch(()=>{});
-        return true;
+        // Quick existence check to avoid showing a broken player
+        const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+        if (!head.ok) return false;
       } catch (_) { return false; }
+      player.src = url;
+      player.loop = false; // original plays once
+      applySettings();
+      await player.play().catch(()=>{});
+      return true;
     }
 
-    // Link folder button: choose or re-authorize folder
-    linkFolderBtn.addEventListener('click', async () => {
-      const h = await pickDirHandle();
-      if (h) {
-        if (overlay.getAttribute('aria-hidden') === 'false') {
-          openFileBtn.hidden = false;
-          openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
-        }
-        // Optional: Tiny toast confirming link
-        clipHint.textContent = '原動画フォルダをリンクしました';
-        setTimeout(() => { if (clipHint.textContent === '原動画フォルダをリンクしました') clipHint.textContent = ''; }, 1500);
-      }
-    });
-
-    // Manual folder reconnect (explicit user gesture)
-    reconnectFolderBtn.addEventListener('click', async () => {
-      // Ensure we have a handle in memory (no prompt)
-      if (!storedDirHandle) {
-        try { storedDirHandle = await idbGet(HANDLE_KEY); } catch (_) { storedDirHandle = null; }
-      }
-      if (!storedDirHandle) {
-        clipHint.textContent = '原動画フォルダの再リンクに失敗しました';
-        setTimeout(() => { if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = ''; }, 2000);
-        return;
-      }
-      // Try to request immediately under this user activation; fall back inside ensurePermissionForHandle
-      const ok = await ensurePermissionForHandle(storedDirHandle);
-      if (ok) {
-        origDirHandle = storedDirHandle;
-        openFileBtn.hidden = false;
-        if (overlay.getAttribute('aria-hidden') === 'false') {
-          openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
-        }
-        clipHint.textContent = '原動画フォルダを再リンクしました';
-        setTimeout(() => { if (clipHint.textContent === '原動画フォルダを再リンクしました') clipHint.textContent = ''; }, 1500);
-      } else {
-        clipHint.textContent = '原動画フォルダの再リンクに失敗しました';
-        setTimeout(() => { if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = ''; }, 2000);
-      }
-    });
 
     // --- Static QR image (offline + cacheable) ---
     function showQr() {
@@ -481,6 +339,8 @@
       qrOverlay.setAttribute('aria-hidden','false');
     }
     function hideQr() {
+      // Move focus away from the hidden element before setting aria-hidden
+      qrBtn.focus();
       qrOverlay.setAttribute('aria-hidden','true');
     }
     qrBtn.addEventListener('click', showQr);
@@ -488,27 +348,23 @@
     // click outside panel closes
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) hideQr(); });
 
-    // Toggle between original and short clip
+    // Toggle between original and short clip (hosted originals)
     async function toggleOriginal() {
-      if (!origDirHandle) return;
       const label = entries[currentIndex];
       if (!label) return;
 
       if (!playingOriginal) {
-        // Switch to original
-        const ok = await playOriginalFromFolder(label);
+        const ok = await playOriginalHosted(label);
         if (ok) {
           playingOriginal = true;
-          openFileBtn.textContent = '快速'; // now button switches back to high-speed clip
+          openFileBtn.textContent = '快速'; // switch back to high-speed clip
         } else {
-          // Original missing; keep clip and show a tiny hint
           clipHint.textContent = '原動画が見つかりません';
           setTimeout(() => {
             if (clipHint.textContent === '原動画が見つかりません') clipHint.textContent = '';
           }, 1500);
         }
       } else {
-        // Switch back to high-speed clip
         playClipForLabel(label);
         playingOriginal = false;
         openFileBtn.textContent = '原動画';
@@ -583,27 +439,22 @@
       }
 
       if (playingOriginal) {
-        // Try original; if missing, fall back to clip and reset mode
-        const ok = await playOriginalFromFolder(label);
+        const ok = await playOriginalHosted(label);
         if (ok) {
           openFileBtn.textContent = '快速';
-          openFileBtn.hidden = !origDirHandle;
           return;
         }
-        // Fallback to clip, notify, and switch mode back to clip
         clipHint.textContent = '原動画が見つかりません';
         setTimeout(() => { if (clipHint.textContent === '原動画が見つかりません') clipHint.textContent = ''; }, 1500);
         playingOriginal = false;
         playClipForLabel(label);
         openFileBtn.textContent = '原動画';
-        openFileBtn.hidden = !origDirHandle;
         return;
       }
 
       // Short clip mode
       playClipForLabel(label);
       openFileBtn.textContent = '原動画';
-      openFileBtn.hidden = !origDirHandle;
     }
 
     function openClip(label, preserveMode = false) {
@@ -730,10 +581,6 @@
       });
     })();
 
-    // Hint the browser to persist storage (helps keep folder handles alive)
-    if (navigator.storage && navigator.storage.persist) {
-      navigator.storage.persist().catch(() => {});
-    }
 
     // Restore from hash (deep link)
     window.addEventListener('load', () => {

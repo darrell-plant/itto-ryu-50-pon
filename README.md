@@ -17,13 +17,14 @@ Tap a tile to open a short 3×-speed clip for quick study during practice.
 - **Hash deep links** (e.g. `#06.07`)
 - **Keyboard controls:** ← → for Prev/Next, Esc to close clip overlay
 - **Swipe gestures:** swipe left/right to navigate, swipe down to close
-- **Original video toggle:** link a local folder of original full-speed kata videos (same filenames). The **ファイル** button toggles between 原動画 (original) and 快速 (3× speed clip).
+- **Original videos (720p)** hosted under `/assets/originals/`, cached on-demand for offline use
 
 ---
 
 ## File Structure
 ```
 /assets/clips/           # 50 technique videos (low-res 320 px, ~5 s, 3× speed)
+assets/originals/        # Original full-speed kata videos (720p), cached on-demand
 icons/                   # PWA icons (16, 32, 192, 512…)
 index.html               # App (single page)
 manifest.webmanifest     # PWA manifest
@@ -87,4 +88,4 @@ MIT (or your choice)
 - Added keyboard navigation (← → Esc)
 - Added swipe gestures (left/right/down)
 - Updated service worker to cache-first for clips and network-first for HTML
-- Added ability to link a local folder of original kata videos and toggle between original (原動画) and high-speed (快速) clips
+- Switched to hosted original videos (720p) under `/assets/originals/` cached on-demand, removed local folder linking and toggle button
