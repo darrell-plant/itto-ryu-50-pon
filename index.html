@@ -101,6 +101,15 @@
       padding: 16px;
     }
     .overlay[aria-hidden="false"] { display: flex; }
+
+    /* QR overlay */
+    .qrOverlay { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; padding: 16px; }
+    .qrOverlay[aria-hidden="false"] { display: flex; }
+    .qrPanel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.55); text-align: center; }
+    .qrPanel h2 { margin: 0 0 10px; font-size: 18px; }
+    .qrPanel img { display: block; width: 256px; height: 256px; margin: 10px auto; background:#fff; }
+    .qrClose { margin-top: 10px; }
+
     .panel {
       width: min(720px, 96vw);
       background: var(--surface);
@@ -118,8 +127,8 @@
       border-bottom: 1px solid var(--border-soft);
       background: linear-gradient(0deg, rgba(15,23,42,0.75), rgba(15,23,42,0.96));
     }
-    .panel-title { font-size: 16px; font-weight: 800; letter-spacing: 0.02em; }
-    .panel-sub { font-size: 12px; color: var(--muted); }
+    .panel-title { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
+    .panel-sub { font-size: 20px; color: var(--muted); }
     .panel-body { padding: 12px; background: #0b1220; }
     video { width: 100%; height: auto; border-radius: 12px; background: #000; outline: 2px solid var(--border-soft); }
 
@@ -187,10 +196,11 @@
 
   <main>
     <div class="grid" id="grid"></div>
-    <div class="gridActions">
-      <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
-      <button class="btn" id="reconnectFolderBtn" title="原動画フォルダを再リンク">フォルダ再リンク</button>
-    </div>
+      <div class="gridActions">
+        <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
+        <button class="btn" id="reconnectFolderBtn" title="原動画フォルダを再リンク">フォルダ再リンク</button>
+        <button class="btn" id="qrBtn" title="QRコードを表示">QR</button>
+      </div>
   </main>
 
   <footer class="appFooter" id="appFooter" hidden>
@@ -220,6 +230,15 @@
           <button class="navBtn" id="nextBtn" aria-label="次へ">次へ ▶︎</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- QR overlay -->
+  <div class="qrOverlay" id="qrOverlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="qrPanel" role="document">
+      <h2>このURLを共有</h2>
+      <img id="qrImg" alt="QR code" />
+      <button class="btn qrClose" id="qrCloseBtn">閉じる</button>
     </div>
   </div>
 
@@ -289,6 +308,12 @@
     const openFileBtn = document.getElementById('openFileBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
+    // QR elements
+    const qrBtn = document.getElementById('qrBtn');
+    const qrOverlay = document.getElementById('qrOverlay');
+    const qrImg = document.getElementById('qrImg');
+    const qrCloseBtn = document.getElementById('qrCloseBtn');
+
     // Accessibility: prevent focus in hidden overlay
     overlay.setAttribute('inert', '');
     let lastFocused = null;
@@ -450,6 +475,19 @@
       }
     });
 
+    // --- Static QR image (offline + cacheable) ---
+    function showQr() {
+      qrImg.src = 'icons/qr-50pon.png';
+      qrOverlay.setAttribute('aria-hidden','false');
+    }
+    function hideQr() {
+      qrOverlay.setAttribute('aria-hidden','true');
+    }
+    qrBtn.addEventListener('click', showQr);
+    qrCloseBtn.addEventListener('click', hideQr);
+    // click outside panel closes
+    qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) hideQr(); });
+
     // Toggle between original and short clip
     async function toggleOriginal() {
       if (!origDirHandle) return;
@@ -537,7 +575,38 @@
       if (p && typeof p.catch === 'function') p.catch(() => {});
     }
 
-    function openClip(label) {
+    // Helper to load and play either original or clip, preserving mode if desired
+    async function loadAndPlayForLabel(label, preserveMode) {
+      // When entering from the grid (not preserving), default to short clip
+      if (!preserveMode) {
+        playingOriginal = false;
+      }
+
+      if (playingOriginal) {
+        // Try original; if missing, fall back to clip and reset mode
+        const ok = await playOriginalFromFolder(label);
+        if (ok) {
+          openFileBtn.textContent = '快速';
+          openFileBtn.hidden = !origDirHandle;
+          return;
+        }
+        // Fallback to clip, notify, and switch mode back to clip
+        clipHint.textContent = '原動画が見つかりません';
+        setTimeout(() => { if (clipHint.textContent === '原動画が見つかりません') clipHint.textContent = ''; }, 1500);
+        playingOriginal = false;
+        playClipForLabel(label);
+        openFileBtn.textContent = '原動画';
+        openFileBtn.hidden = !origDirHandle;
+        return;
+      }
+
+      // Short clip mode
+      playClipForLabel(label);
+      openFileBtn.textContent = '原動画';
+      openFileBtn.hidden = !origDirHandle;
+    }
+
+    function openClip(label, preserveMode = false) {
       const src = `assets/clips/${label}.mp4`;
       // Track index
       currentIndex = entries.indexOf(label);
@@ -549,12 +618,8 @@
       clipTitle.textContent = `形${numberFormatted}${meta.name ? '\u3000' + meta.name : ''}`;
       // Hint line becomes the reading (hiragana)
       clipHint.textContent = meta.reading || '';
-      // Load and play video
-      playClipForLabel(label);
-      // Reset to short clip on open; update toggle button
-      playingOriginal = false;
-      openFileBtn.textContent = '原動画'; // invite switching to original
-      openFileBtn.hidden = !origDirHandle; // only show if folder is linked
+      // Load according to current mode (or reset if not preserving)
+      loadAndPlayForLabel(label, preserveMode);
 
       // Prepare to show overlay: capture current focus and allow focus inside overlay
       lastFocused = document.activeElement;
@@ -576,7 +641,7 @@
     function goTo(delta) {
       const nextIndex = currentIndex + delta;
       if (nextIndex < 0 || nextIndex >= entries.length) return;
-      openClip(entries[nextIndex]);
+      openClip(entries[nextIndex], true);
     }
 
     prevBtn.addEventListener('click', () => goTo(-1));
@@ -674,7 +739,7 @@
     window.addEventListener('load', () => {
       const hash = decodeURIComponent(location.hash.replace('#',''));
       if (hash && entries.includes(hash)) {
-        setTimeout(() => openClip(hash), 50);
+        setTimeout(() => openClip(hash, false), 50);
       }
     });
 
@@ -684,7 +749,7 @@
         if (overlay.getAttribute('aria-hidden') === 'false') closeClip();
       } else {
         const label = decodeURIComponent(location.hash.slice(1));
-        if (entries.includes(label)) openClip(label);
+        if (entries.includes(label)) openClip(label, false);
       }
     });
 

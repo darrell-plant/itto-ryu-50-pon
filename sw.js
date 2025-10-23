@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v8";
+const CACHE_NAME = "odachi50-v10";
 // Expose a simple version endpoint for the app shell to read
 const VERSION_ENDPOINT = 'version.txt';
 const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
@@ -6,6 +6,7 @@ const SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
+  "./icons/qr-50pon.png",
   // styles are inline, but keep future css/js here if added
 ];
 
