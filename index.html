@@ -55,7 +55,7 @@
       gap: 12px;
       padding: 14px;
       max-width: 520px; /* portrait-friendly */
-      margin: 0 auto 80px;
+      margin: 0 auto 20px;
     }
 
     .gridActions { display: flex; justify-content: center; gap: 10px; padding: 4px 14px 18px; }
@@ -301,6 +301,7 @@
     const reconnectFolderBtn = document.getElementById('reconnectFolderBtn');
 
     let origDirHandle = null; // FileSystemDirectoryHandle (if granted)
+    let storedDirHandle = null; // persisted handle from IDB (may not be authorized yet)
 
     // Minimal IndexedDB helpers to persist the handle across sessions
     const DB_NAME = 'odachi50-fs';
@@ -331,20 +332,30 @@
       }));
     }
 
+    // Preload stored handle from IDB (no permission prompt)
+    async function preloadStoredHandle() {
+      try { storedDirHandle = await idbGet(HANDLE_KEY); } catch (_) { storedDirHandle = null; }
+    }
+    // Kick off preload early so we can use the current click's user activation
+    preloadStoredHandle();
+
     // Ensure permission (Android may require a user activation to call requestPermission)
     async function ensurePermissionForHandle(h) {
       try {
         let p = await h.queryPermission({ mode: 'read' });
         if (p === 'granted') return true;
         if (p === 'prompt') {
+          // If we're currently in a user activation (e.g., button click), request immediately
+          if (navigator.userActivation && navigator.userActivation.isActive) {
+            try { const res = await h.requestPermission({ mode: 'read' }); return res === 'granted'; }
+            catch (_) { return false; }
+          }
+          // Otherwise wait for the next user gesture
           return new Promise((resolve) => {
             const onActivate = async () => {
-              try {
-                const res = await h.requestPermission({ mode: 'read' });
-                resolve(res === 'granted');
-              } catch (_) { resolve(false); }
+              try { const res = await h.requestPermission({ mode: 'read' }); resolve(res === 'granted'); }
+              catch (_) { resolve(false); }
             };
-            // One-time listeners to capture the next user gesture
             document.addEventListener('pointerdown', onActivate, { once: true });
             document.addEventListener('keydown', onActivate, { once: true });
           });
@@ -356,7 +367,7 @@
     const HANDLE_KEY = 'origDir';
     async function restoreDirHandle() {
       try {
-        const h = await idbGet(HANDLE_KEY);
+        const h = storedDirHandle || await idbGet(HANDLE_KEY);
         if (!h) return null;
         const ok = await ensurePermissionForHandle(h);
         if (ok) {
@@ -414,22 +425,28 @@
 
     // Manual folder reconnect (explicit user gesture)
     reconnectFolderBtn.addEventListener('click', async () => {
-      const h = await restoreDirHandle().catch(() => null);
-      if (h) {
+      // Ensure we have a handle in memory (no prompt)
+      if (!storedDirHandle) {
+        try { storedDirHandle = await idbGet(HANDLE_KEY); } catch (_) { storedDirHandle = null; }
+      }
+      if (!storedDirHandle) {
+        clipHint.textContent = '原動画フォルダの再リンクに失敗しました';
+        setTimeout(() => { if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = ''; }, 2000);
+        return;
+      }
+      // Try to request immediately under this user activation; fall back inside ensurePermissionForHandle
+      const ok = await ensurePermissionForHandle(storedDirHandle);
+      if (ok) {
+        origDirHandle = storedDirHandle;
         openFileBtn.hidden = false;
         if (overlay.getAttribute('aria-hidden') === 'false') {
           openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
         }
-        // Same lightweight feedback as link action
         clipHint.textContent = '原動画フォルダを再リンクしました';
-        setTimeout(() => {
-          if (clipHint.textContent === '原動画フォルダを再リンクしました') clipHint.textContent = '';
-        }, 1500);
+        setTimeout(() => { if (clipHint.textContent === '原動画フォルダを再リンクしました') clipHint.textContent = ''; }, 1500);
       } else {
         clipHint.textContent = '原動画フォルダの再リンクに失敗しました';
-        setTimeout(() => {
-          if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = '';
-        }, 2000);
+        setTimeout(() => { if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = ''; }, 2000);
       }
     });
 

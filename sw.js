@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v7";
+const CACHE_NAME = "odachi50-v8";
 // Expose a simple version endpoint for the app shell to read
 const VERSION_ENDPOINT = 'version.txt';
 const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
