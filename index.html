@@ -205,7 +205,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <video id="player" playsinline muted autoplay controls preload="metadata"></video>
+        <video id="player" playsinline loop muted autoplay controls preload="metadata"></video>
         <div class="navRow">
           <button class="navBtn" id="prevBtn" aria-label="前へ">◀︎ 前へ</button>
           <div class="navGroup">
@@ -384,6 +384,7 @@
         const file = await fh.getFile();
         const url = URL.createObjectURL(file);
         player.src = url;
+        player.loop = false; // original plays once
         applySettings();
         await player.play().catch(()=>{});
         return true;
@@ -486,6 +487,7 @@
     function playClipForLabel(label) {
       const src = `assets/clips/${label}.mp4`;
       player.src = src;
+      player.loop = true; // short clip loops
       applySettings();
       const p = player.play();
       if (p && typeof p.catch === 'function') p.catch(() => {});
