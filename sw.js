@@ -1,6 +1,7 @@
 const CACHE_NAME = "odachi50-v6";
 // Expose a simple version endpoint for the app shell to read
-const VERSION_ENDPOINT = '/version.txt';
+const VERSION_ENDPOINT = 'version.txt';
+const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
 const SHELL = [
   "./",
   "./index.html",
@@ -32,7 +33,7 @@ self.addEventListener("fetch", (event) => {
   // Serve a plain-text version string from the SW (uses CACHE_NAME)
   try {
     const url = new URL(event.request.url);
-    if (url.pathname === VERSION_ENDPOINT) {
+    if (url.origin === location.origin && url.pathname === VERSION_PATHNAME) {
       event.respondWith(new Response(CACHE_NAME, {
         status: 200,
         headers: {
