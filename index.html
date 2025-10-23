@@ -46,8 +46,8 @@
       gap: 8px;
       border-bottom: 1px solid var(--border-soft);
     }
-    h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
-    .sub { font-size: 12px; color: var(--muted); }
+    h1 { font-size: 26px; margin: 0; letter-spacing: 0.02em; }
+    .sub { font-size: 20px; color: var(--muted); }
 
     .grid {
       display: grid;
@@ -57,6 +57,8 @@
       max-width: 520px; /* portrait-friendly */
       margin: 0 auto 80px;
     }
+
+    .gridActions { display: flex; justify-content: center; gap: 10px; padding: 4px 14px 18px; }
 
     .tile {
       width: 100%;
@@ -179,13 +181,16 @@
 <body>
   <header>
     <div>
-      <h1>大太刀50本 <span class="sub">— 目録（36形 / 50本）</span></h1>
+      <h1>大太刀50本 <span class="sub">（36形 / 50本）</span></h1>
     </div>
-    <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
   </header>
 
   <main>
     <div class="grid" id="grid"></div>
+    <div class="gridActions">
+      <button class="btn" id="linkFolderBtn" title="原動画フォルダを選択">原動画フォルダ</button>
+      <button class="btn" id="reconnectFolderBtn" title="原動画フォルダを再リンク">フォルダ再リンク</button>
+    </div>
   </main>
 
   <footer class="appFooter" id="appFooter" hidden>
@@ -293,6 +298,8 @@
 
     // --- Original folder linking via File System Access API (Chromium) ---
     const linkFolderBtn = document.getElementById('linkFolderBtn');
+    const reconnectFolderBtn = document.getElementById('reconnectFolderBtn');
+
     let origDirHandle = null; // FileSystemDirectoryHandle (if granted)
 
     // Minimal IndexedDB helpers to persist the handle across sessions
@@ -405,6 +412,26 @@
       }
     });
 
+    // Manual folder reconnect (explicit user gesture)
+    reconnectFolderBtn.addEventListener('click', async () => {
+      const h = await restoreDirHandle().catch(() => null);
+      if (h) {
+        openFileBtn.hidden = false;
+        if (overlay.getAttribute('aria-hidden') === 'false') {
+          openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
+        }
+        // Same lightweight feedback as link action
+        clipHint.textContent = '原動画フォルダを再リンクしました';
+        setTimeout(() => {
+          if (clipHint.textContent === '原動画フォルダを再リンクしました') clipHint.textContent = '';
+        }, 1500);
+      } else {
+        clipHint.textContent = '原動画フォルダの再リンクに失敗しました';
+        setTimeout(() => {
+          if (clipHint.textContent === '原動画フォルダの再リンクに失敗しました') clipHint.textContent = '';
+        }, 2000);
+      }
+    });
 
     // Toggle between original and short clip
     async function toggleOriginal() {
@@ -644,19 +671,6 @@
       }
     });
 
-    // Attempt Folder Reconnect on startup (with toast)
-    window.addEventListener('load', async () => {
-      const h = await restoreDirHandle().catch(() => null);
-      if (h) {
-        openFileBtn.hidden = false;
-        if (overlay.getAttribute('aria-hidden') === 'false') {
-          openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
-        }
-        showToast('原動画フォルダを再リンクしました');
-      } else {
-        showToast('原動画フォルダの再リンクに失敗しました');
-      }
-    });
 
     // --- Toast helper ---
     const updateToast = document.getElementById('updateToast');
