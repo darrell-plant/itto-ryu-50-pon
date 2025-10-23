@@ -150,6 +150,20 @@
     .btn:hover { background: #0f172a; }
     .btn:active { transform: translateY(1px); }
 
+    /* Subtle build label footer */
+    .appFooter {
+      position: sticky;
+      bottom: 0;
+      z-index: 10;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      background: linear-gradient(180deg, rgba(10,13,18,0), rgba(10,13,18,0.85));
+      border-top: 1px solid var(--border-soft);
+    }
+    .buildTag { opacity: 0.9; }
+
     /* Update toast */
     #updateToast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; }
     .toast { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:#0f172a; color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,0.45); font-size:14px; }
@@ -173,6 +187,10 @@
   <main>
     <div class="grid" id="grid"></div>
   </main>
+
+  <footer class="appFooter" id="appFooter" hidden>
+    <span class="buildTag">ビルド: <span id="buildId"></span></span>
+  </footer>
 
   <!-- Update toast -->
   <div id="updateToast" aria-live="polite" aria-atomic="true" style="display:none"></div>
@@ -329,7 +347,6 @@
     }
 
     const HANDLE_KEY = 'origDir';
-
     async function restoreDirHandle() {
       try {
         const h = await idbGet(HANDLE_KEY);
@@ -387,8 +404,6 @@
       }
     });
 
-    // Try to restore handle on load (Chromium only)
-    restoreDirHandle();
 
     // Toggle between original and short clip
     async function toggleOriginal() {
@@ -627,52 +642,100 @@
       }
     });
 
-    // Attempt Folder Reconnect on startup (silent)
+    // Attempt Folder Reconnect on startup (with toast)
     window.addEventListener('load', async () => {
       const h = await restoreDirHandle().catch(() => null);
       if (h) {
-        // Reconnected: reveal toggle button; keep correct label
         openFileBtn.hidden = false;
         if (overlay.getAttribute('aria-hidden') === 'false') {
           openFileBtn.textContent = playingOriginal ? '快速' : '原動画';
         }
+        showToast('原動画フォルダを再リンクしました');
+      } else {
+        showToast('原動画フォルダの再リンクに失敗しました');
       }
-      // If h is null, do nothing (silent failure)
     });
 
-    // --- SW update prompt (no install button) ---
+    // --- Toast helper ---
     const updateToast = document.getElementById('updateToast');
-    function showUpdateToast() {
+    function showToast(message, actionLabel, actionHandler) {
       if (!updateToast) return;
       updateToast.innerHTML = '';
       const wrap = document.createElement('div');
       wrap.className = 'toast';
-      wrap.innerHTML = '<span>新しいバージョンがあります。</span>';
-      const btn = document.createElement('button');
-      btn.textContent = '再読み込み';
-      btn.addEventListener('click', () => { location.reload(); });
-      wrap.appendChild(btn);
+      const span = document.createElement('span');
+      span.textContent = message;
+      wrap.appendChild(span);
+      if (actionLabel && typeof actionHandler === 'function') {
+        const btn = document.createElement('button');
+        btn.textContent = actionLabel;
+        btn.addEventListener('click', actionHandler);
+        wrap.appendChild(btn);
+      }
       updateToast.appendChild(wrap);
       updateToast.style.display = 'block';
+      // Auto-hide after 5s if there is no action button
+      if (!actionLabel) {
+        setTimeout(() => { updateToast.style.display = 'none'; }, 5000);
+      }
     }
+
+    // Fetch and display build/version from the service worker endpoint
+    (async function showBuildId(){
+      try {
+        const res = await fetch('./version.txt', { cache: 'no-store' });
+        if (!res.ok) throw new Error('no version');
+        const ver = (await res.text()).trim();
+        const el = document.getElementById('buildId');
+        if (el && ver) {
+          el.textContent = ver;
+          const footer = document.getElementById('appFooter');
+          if (footer) footer.hidden = false;
+        }
+      } catch (_) { /* silent if unavailable */ }
+    })();
+
+    // Allow user to hide the build footer permanently (until storage is cleared)
+    (function enableFooterHideOnce(){
+      const footerEl = document.getElementById('appFooter');
+      if (!footerEl) return;
+      footerEl.addEventListener('click', () => {
+        footerEl.hidden = true;
+      }, { once: true });
+    })();
 
     // Register service worker for offline + updates
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js', { scope: './' })
           .then((registration) => {
-            // If there's an updated SW installing, listen for it and show toast when ready
+            // If there's an updated SW installing, prompt to reload when ready
             registration.onupdatefound = () => {
               const installing = registration.installing;
               if (!installing) return;
               installing.addEventListener('statechange', () => {
                 if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-                  showUpdateToast();
+                  showToast('新しいバージョンがあります。', '再読み込み', () => location.reload());
                 }
               });
             };
+            // If there's already a waiting worker (e.g., quick refresh), prompt immediately
+            if (registration.waiting && navigator.serviceWorker.controller) {
+              showToast('新しいバージョンがあります。', '再読み込み', () => location.reload());
+            }
           })
           .catch(console.error);
+
+        // Let the user know when an update has taken control (after reload)
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          // At this point the new SW is controlling the page
+          showToast('更新を適用しました');
+        });
+      });
+
+      // Optional: toast on first-time install from supported browsers
+      window.addEventListener('appinstalled', () => {
+        showToast('インストールが完了しました');
       });
     }
 
