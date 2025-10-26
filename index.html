@@ -391,12 +391,23 @@
       preloadBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
       if (isTouch) {
-        // Touch: long-press (~800ms) to force
+        // Touch: long-press (5s) to force; visually indicate by removing .ready style
         preloadBtn.addEventListener('touchstart', () => {
-          pressTimer = setTimeout(() => { preloadBtn.dataset.force = '1'; }, 800);
+          // If already timing, clear first
+          if (pressTimer) clearTimeout(pressTimer);
+          pressTimer = setTimeout(() => {
+            preloadBtn.dataset.force = '1';
+            // Indicate force is armed: return to initial (non-.ready) style
+            preloadBtn.classList.remove('ready');
+          }, 5000); // 5 seconds
         }, { passive: true });
-        preloadBtn.addEventListener('touchend', () => { clearTimeout(pressTimer); });
-        preloadBtn.addEventListener('touchcancel', () => { clearTimeout(pressTimer); });
+
+        const cancelLongPress = () => {
+          if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+          // Do not clear dataset.force here; the click handler will consume it if set
+        };
+        preloadBtn.addEventListener('touchend', cancelLongPress);
+        preloadBtn.addEventListener('touchcancel', cancelLongPress);
       }
 
       preloadBtn.addEventListener('click', (e) => {
@@ -458,6 +469,7 @@
         }
         //showToast(`全${msg.total}件をキャッシュしました`);
         requestMediaStatus();
+        if (preloadBtn) preloadBtn.classList.add('ready');
         if (preloadStatus) preloadStatus.textContent = `（${msg.total}/${msg.total}）`;
         } else if (msg.type === 'CHECK_MEDIA_RESULT') {
           const { total, cached } = msg;
