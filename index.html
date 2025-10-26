@@ -59,6 +59,7 @@
     }
 
     .gridActions { display: flex; justify-content: center; gap: 10px; padding: 4px 14px 18px; }
+    .status { font-size: 12px; color: var(--muted); align-self: center; }
 
     .tile {
       width: 100%;
@@ -162,6 +163,15 @@
     }
     .btn:hover { background: #0f172a; }
     .btn:active { transform: translateY(1px); }
+    .btn[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: grayscale(60%);
+    }
+    .btn.ready {
+      opacity: 0.6;
+      filter: grayscale(40%);
+    }
 
     /* Subtle build label footer */
     .appFooter {
@@ -200,6 +210,8 @@
     <div class="grid" id="grid"></div>
       <div class="gridActions">
         <button class="btn" id="qrBtn" title="QRコードを表示">QR</button>
+        <button class="btn" id="preloadBtn" title="全動画をオフライン用にキャッシュ">一括キャッシュ</button>
+        <span class="status" id="preloadStatus" aria-live="polite" aria-atomic="true"></span>
       </div>
   </main>
 
@@ -315,6 +327,8 @@
     const qrOverlay = document.getElementById('qrOverlay');
     const qrImg = document.getElementById('qrImg');
     const qrCloseBtn = document.getElementById('qrCloseBtn');
+    const preloadBtn = document.getElementById('preloadBtn');
+    const preloadStatus = document.getElementById('preloadStatus');
 
     // Accessibility: prevent focus in hidden overlay
     overlay.setAttribute('inert', '');
@@ -351,6 +365,131 @@
     qrCloseBtn.addEventListener('click', hideQr);
     // click outside panel closes
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) hideQr(); });
+
+    function allMediaUrls() {
+      const urls = [];
+      for (const label of entries) {
+        urls.push(`assets/clips/${label}.mp4`);
+        urls.push(`assets/originals/${label}.mp4`);
+      }
+      return urls;
+    }
+
+    let prefetchInFlight = false;
+
+    function requestMediaStatus() {
+      if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+      navigator.serviceWorker.controller.postMessage({ type: 'CHECK_MEDIA', urls: allMediaUrls() });
+    }
+
+    // --- Preload all media (desktop: Shift+Click to force; touch: long-press to force) ---
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    let pressTimer;
+
+    if (preloadBtn) {
+      // Prevent context menu from interfering with long-press on some platforms
+      preloadBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      if (isTouch) {
+        // Touch: long-press (~800ms) to force
+        preloadBtn.addEventListener('touchstart', () => {
+          pressTimer = setTimeout(() => { preloadBtn.dataset.force = '1'; }, 800);
+        }, { passive: true });
+        preloadBtn.addEventListener('touchend', () => { clearTimeout(pressTimer); });
+        preloadBtn.addEventListener('touchcancel', () => { clearTimeout(pressTimer); });
+      }
+
+      preloadBtn.addEventListener('click', (e) => {
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+          clipHint.textContent = 'サービスワーカー未準備です。少し待って再試行してください。';
+          setTimeout(() => { if (clipHint.textContent.includes('サービスワーカー')) clipHint.textContent = ''; }, 2000);
+          return;
+        }
+        if (prefetchInFlight) return; // already running
+
+        // Determine force: Desktop Shift+Click or Touch long-press (dataset.force set elsewhere)
+        const force = (e.shiftKey === true) || (preloadBtn.dataset.force === '1');
+        delete preloadBtn.dataset.force;
+
+        // If everything is cached and not forcing, show a toast and do nothing
+        const total = Number(preloadBtn.dataset.total || '0');
+        const cached = Number(preloadBtn.dataset.cached || '0');
+        const allReady = total > 0 && cached >= total;
+        if (allReady && !force) {
+          //showToast('すべてキャッシュ済みです（再取得はShift+クリック）');
+          return;
+        }
+
+        // Proceed with prefetch (force or not)
+        const urls = allMediaUrls();
+        prefetchInFlight = true;
+        preloadBtn.disabled = true; // disable only during in-flight
+        const originalText = preloadBtn.textContent;
+        preloadBtn.textContent = `準備中… 0 / ${urls.length}`;
+        if (preloadStatus) preloadStatus.textContent = `（0/${urls.length}）`;
+
+        navigator.serviceWorker.controller.postMessage({ type: 'PREFETCH_MEDIA', urls, force });
+
+        // Safety timeout to re-enable if something goes wrong
+        setTimeout(() => {
+          prefetchInFlight = false;
+          if (preloadBtn.disabled) { preloadBtn.disabled = false; preloadBtn.textContent = originalText; }
+        }, 10 * 60 * 1000);
+      });
+    }
+
+    // Receive progress and status from SW
+    navigator.serviceWorker?.addEventListener('message', (event) => {
+      const msg = event.data || {};
+      if (msg.type === 'PREFETCH_DEBUG' && msg.msg) {
+        // Debug to console for inspection
+        console.debug('[SW]', msg.msg);
+        return;
+      }
+      if (msg.type === 'PREFETCH_PROGRESS') {
+        if (preloadBtn) preloadBtn.textContent = `準備中… ${msg.done} / ${msg.total}`;
+        if (preloadStatus) preloadStatus.textContent = `（${msg.done}/${msg.total}）`;
+      } else if (msg.type === 'PREFETCH_DONE') {
+        prefetchInFlight = false;
+        if (preloadBtn) {
+          preloadBtn.disabled = false;
+          preloadBtn.textContent = '完了！';
+          setTimeout(() => { preloadBtn.textContent = '一括キャッシュ'; }, 1500);
+        }
+        //showToast(`全${msg.total}件をキャッシュしました`);
+        requestMediaStatus();
+        if (preloadStatus) preloadStatus.textContent = `（${msg.total}/${msg.total}）`;
+        } else if (msg.type === 'CHECK_MEDIA_RESULT') {
+          const { total, cached } = msg;
+          if (preloadStatus) preloadStatus.textContent = `（${cached}/${total}）`;
+          if (preloadBtn) {
+            // Record counts so the click handler can decide
+            preloadBtn.dataset.total = String(total);
+            preloadBtn.dataset.cached = String(cached);
+
+            if (cached >= total) {
+              // Keep enabled so Shift+Click can FORCE re-cache
+              preloadBtn.classList.add('ready');
+              preloadBtn.textContent = 'オフライン準備済み';
+              preloadBtn.title = '';
+              //preloadBtn.title = 'すべてキャッシュ済みです（再取得はShift+クリック）';
+            } else {
+              preloadBtn.classList.remove('ready');
+              preloadBtn.textContent = '一括キャッシュ';
+              preloadBtn.title = `未キャッシュ: ${total - cached} / ${total}`;
+            }
+            // Only disable while a prefetch is running
+            preloadBtn.disabled = !!prefetchInFlight;
+          }
+        } else if (msg.type === 'PREFETCH_IGNORED_BUSY') {
+        // Another prefetch is running; reflect busy state on the button
+        prefetchInFlight = true;
+        if (preloadBtn) {
+          preloadBtn.disabled = true;
+          if (!/準備中/.test(preloadBtn.textContent)) preloadBtn.textContent = '準備中…';
+        }
+      }
+    });
 
     // Toggle between original and short clip (hosted originals)
     async function toggleOriginal() {
@@ -582,6 +721,11 @@
       }
     });
 
+    // Ask the SW how much is cached (to disable the button if complete)
+    window.addEventListener('load', () => {
+      requestMediaStatus();
+    });
+
     // Back button handling
     window.addEventListener('popstate', () => {
       if (!location.hash) {
@@ -637,11 +781,13 @@
     if ('serviceWorker' in navigator) {
       if (navigator.serviceWorker.controller) {
         fetchAndShowBuildId();
+        requestMediaStatus();
       } else {
         // Wait until the new SW takes control, then fetch once
         const onCtl = () => {
           try { navigator.serviceWorker.removeEventListener('controllerchange', onCtl); } catch(_) {}
           fetchAndShowBuildId();
+          requestMediaStatus();
         };
         navigator.serviceWorker.addEventListener('controllerchange', onCtl);
       }
@@ -682,6 +828,7 @@
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           // At this point the new SW is controlling the page
           showToast('更新を適用しました');
+          requestMediaStatus();
         });
       });
 
