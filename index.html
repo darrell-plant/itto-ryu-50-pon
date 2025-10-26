@@ -23,6 +23,7 @@
       --border-soft: rgba(255,255,255,0.12);
       --ring: #60a5fa;            /* blue-400 */
       --accent: #3b82f6;          /* blue-500 */
+      --tile-width-pct: 90; /* default grid tile width percent */
     }
     html, body {
       height: 100%;
@@ -51,21 +52,27 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(3, 1fr); /* portrait: 3 columns */
       gap: 12px;
-      padding: 14px;
-      max-width: 520px; /* portrait-friendly */
+      padding: 5px 0px;
+      width: 90%;
+      max-width: 640px; /* comfortable portrait cap */
       margin: 0 auto 20px;
+    }
+
+    @media (orientation: landscape) {
+      .grid {
+        grid-template-columns: repeat(6, 1fr); /* landscape: 6 columns */
+        max-width: 1200px; /* allow wider grids on tablets/desktops */
+      }
     }
 
     .gridActions { display: flex; justify-content: center; gap: 10px; padding: 4px 14px 18px; }
     .status { font-size: 12px; color: var(--muted); align-self: center; }
 
     .tile {
-      width: 100%;
-      aspect-ratio: 1 / 1;        /* squares that scale */
-      max-width: 120px;           /* target 120x100 */
-      max-height: 100px;
+      width: calc(var(--tile-width-pct) * 1%);
+      aspect-ratio: 4 / 3;        /* squares that scale */
       background: var(--tile);
       border-radius: 16px;
       border: 2px solid var(--border);
@@ -84,8 +91,8 @@
       margin: 0 auto; /* center within column */
       color: var(--text);
     }
-    .tile .num { font-size: 22px; font-weight: 800; line-height: 1.1; }
-    .tile .name { font-size: 12px; font-weight: 700; line-height: 1.15; opacity: 0.9; margin-top: 4px; word-break: keep-all; overflow-wrap: anywhere; }
+    .tile .num { font-size: clamp(18px, 3.0vw, 20px); font-weight: 800; line-height: 1.1; }
+    .tile .name { font-size: clamp(12px, 2.0vw, 16px); font-weight: 700; line-height: 1.15; opacity: 0.9; margin-top: 4px; word-break: keep-all; overflow-wrap: anywhere; }
     .tile:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring), inset 0 0 0 2px rgba(0,0,0,0.4); }
     .tile:hover { background: var(--tile-hover); transform: translateY(-1px); border-color: rgba(255,255,255,0.3); }
     .tile:active { transform: translateY(0); }
@@ -142,6 +149,7 @@
       .videoFrame { max-height: 60vh; }
       /* Ensure nav row remains reachable */
       .navRow { margin-top: 6px; }
+      .grid { gap: 10px; }
     }
 
     /* Prev/Next row */
@@ -212,6 +220,10 @@
         <button class="btn" id="qrBtn" title="QRコードを表示">QR</button>
         <button class="btn" id="preloadBtn" title="全動画をオフライン用にキャッシュ">一括キャッシュ</button>
         <span class="status" id="preloadStatus" aria-live="polite" aria-atomic="true"></span>
+      </div>
+      <div class="gridActions" id="scaleActions">
+        <button class="btn" id="scaleDownBtn" title="タイルを小さくする (-5%)">−5%</button>
+        <button class="btn" id="scaleUpBtn" title="タイルを大きくする (+5%)">+5%</button>
       </div>
   </main>
 
@@ -329,6 +341,41 @@
     const qrCloseBtn = document.getElementById('qrCloseBtn');
     const preloadBtn = document.getElementById('preloadBtn');
     const preloadStatus = document.getElementById('preloadStatus');
+
+    // --- Dynamic tile sizing controls ---
+    const scaleDownBtn = document.getElementById('scaleDownBtn');
+    const scaleUpBtn = document.getElementById('scaleUpBtn');
+
+    const TILE_KEY = 'odachi-tile-width-pct';
+    const MIN_PCT = 60;  // lower bound
+    const MAX_PCT = 130; // upper bound
+
+    function getTilePct() {
+      const saved = Number(localStorage.getItem(TILE_KEY));
+      if (!Number.isNaN(saved) && saved >= MIN_PCT && saved <= MAX_PCT) return saved;
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--tile-width-pct').trim();
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : 90;
+    }
+
+    function setTilePct(pct, log = true) {
+      const clamped = Math.max(MIN_PCT, Math.min(MAX_PCT, Math.round(pct)));
+      document.documentElement.style.setProperty('--tile-width-pct', String(clamped));
+      try { localStorage.setItem(TILE_KEY, String(clamped)); } catch(_) {}
+      if (log) {
+        console.log(`[Grid] .tile width set to ${clamped}% (CSS: .tile { width: calc(${clamped}%); })`);
+      }
+      // Visual affordance: briefly pulse tiles to indicate change
+      try {
+        document.querySelectorAll('.tile').forEach(el => { el.style.transition = 'transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, width 120ms ease'; });
+      } catch(_) {}
+    }
+
+    // Restore on load
+    setTilePct(getTilePct(), false);
+
+    scaleDownBtn?.addEventListener('click', () => setTilePct(getTilePct() - 5));
+    scaleUpBtn?.addEventListener('click', () => setTilePct(getTilePct() + 5));
 
     // Accessibility: prevent focus in hidden overlay
     overlay.setAttribute('inert', '');
