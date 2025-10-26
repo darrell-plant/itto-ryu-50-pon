@@ -83,9 +83,17 @@ MIT (or your choice)
 
 ---
 
-## Recent Changes (v0.1.1 → v0.1.4)
-- Fixed landscape layout so navigation buttons remain visible
-- Added keyboard navigation (← → Esc)
-- Added swipe gestures (left/right/down)
-- Updated service worker to cache-first for clips and network-first for HTML
-- Switched to hosted original videos (720p) under `/assets/originals/` cached on-demand, removed local folder linking and toggle button
+## Recent Changes (v0.1.0 → v1.1.2)
+v1.2.1  Add dynamic tile scaling controls (+/−5%) and improved responsive grid layout (portrait 3×12, landscape 6×6)
+v1.2.0  Media preloader polish: skip-cached, busy guard, Shift+Click force, status indicator
+v1.1.0  fix video caching to allow offline use
+v1.0.2  remove redundant swipe down
+v1.0.1  fix screen jitter
+v1.0.0  Stable release: hosted originals + full offline PWA
+v0.1.6  add build number footer
+v0.1.5  automatic folder reconnect for android devices
+v0.1.4  Added ability to link a local folder of original kata videos
+v0.1.3  Added keyboard nav and swipe gestures
+v0.1.2  update sw cache policy
+v0.1.1  Landscape controls fix
+v0.1.0  First public demo: grid w/ kanji, overlay, prev/next, update toast, PWA
