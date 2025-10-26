@@ -1,4 +1,4 @@
-const CACHE_NAME = "odachi50-v13";
+const CACHE_NAME = "odachi50-v14";
 // Expose a simple version endpoint for the app shell to read
 const VERSION_ENDPOINT = 'version.txt';
 const VERSION_PATHNAME = new URL(VERSION_ENDPOINT, self.registration.scope).pathname;
@@ -70,14 +70,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for video clips
-  if (request.url.includes("/assets/clips/")) {
-    return cacheFirst(event, request);
+  // Cache-first for video clips (range-aware)
+  if (request.url.includes('/assets/clips/')) {
+    // If it's a Range request and we have a full cached copy, synthesize 206; otherwise network and background-cache full
+    if (request.headers.get('range')) {
+      event.respondWith(serveRangeFromCacheOrNetwork(event, request));
+      return;
+    }
+    return cacheFirst(event, new Request(request.url));
   }
 
-  // Cache-first for full originals
+  // Cache-first for full originals (range-aware)
   if (request.url.includes('/assets/originals/')) {
-    return cacheFirst(event, request);
+    if (request.headers.get('range')) {
+      event.respondWith(serveRangeFromCacheOrNetwork(event, request));
+      return;
+    }
+    return cacheFirst(event, new Request(request.url));
   }
 
   // Cache-first for app icons
@@ -106,9 +115,58 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+async function serveRangeFromCacheOrNetwork(event, request) {
+  const rangeHeader = request.headers.get('range');
+  const url = request.url;
+  const cache = await caches.open(CACHE_NAME);
+
+  // Always look up the FULL object by a range-less Request key
+  const fullReq = new Request(url);
+  const cachedFull = await cache.match(fullReq);
+
+  // If we already have the full object cached, synthesize a 206 slice
+  if (rangeHeader && cachedFull) {
+    const size = Number(cachedFull.headers.get('Content-Length')) || undefined;
+    const m = /bytes\s*=\s*(\d+)-(\d+)?/i.exec(rangeHeader);
+    if (m) {
+      const start = Number(m[1]);
+      const end = m[2] ? Number(m[2]) : (size ? size - 1 : undefined);
+      const buf = await cachedFull.arrayBuffer();
+      const last = (end !== undefined) ? end : (buf.byteLength - 1);
+      const chunk = buf.slice(start, last + 1);
+      const headers = new Headers(cachedFull.headers);
+      headers.set('Content-Range', `bytes ${start}-${last}/${buf.byteLength}`);
+      headers.set('Accept-Ranges', 'bytes');
+      headers.set('Content-Length', String(chunk.byteLength));
+      // Ensure content-type is preserved (fallback to mp4)
+      if (!headers.get('Content-Type')) headers.set('Content-Type', 'video/mp4');
+      return new Response(chunk, { status: 206, headers });
+    }
+  }
+
+  // Otherwise, go to network for this request (may be 206). In the background, try to cache a full 200 copy.
+  const netResp = await fetch(request);
+
+  // Kick off a background fetch for the FULL file (no Range) to prime cache, if we don't have it yet.
+  if (!cachedFull) {
+    event.waitUntil((async () => {
+      try {
+        const fullResp = await fetch(fullReq, { cache: 'no-store' });
+        const isPartial = fullResp.status === 206 || fullResp.headers.has('Content-Range');
+        const canCache = fullResp.ok && !isPartial && fullResp.type === 'basic';
+        if (canCache) {
+          await cache.put(fullReq, fullResp.clone());
+        }
+      } catch (_) { /* ignore */ }
+    })());
+  }
+
+  return netResp;
+}
+
 function cacheFirst(event, request) {
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.match(new Request(request.url)).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((res) => {
         const isPartial = res.status === 206 || res.headers.has('Content-Range');
